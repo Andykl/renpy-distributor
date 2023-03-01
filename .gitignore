@@ -1,0 +1,27 @@
+# Changing files
+*~
+*#
+*.bak
+*.old
+*.new
+
+# macOS-related files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows-related files
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+[Dd]esktop.ini
+
+.vscode/
+.idea/
+.env/
+
+# Python binary files
+*.pyc
+*.pyo
+__pycache__

@@ -1,0 +1,16 @@
+# Python binary
+*.pyo
+*.pyc
+
+# Java binary
+*.class
+
+# Installed SDK files
+Sdk
+
+# Zip file with SDK given by Google
+commandlinetools-*
+sdk-tools-*
+
+# Keystore files
+*.keystore
