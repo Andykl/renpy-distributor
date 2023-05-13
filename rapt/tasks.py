@@ -362,7 +362,8 @@ def render_generated(context: Context, interface: Interface):
             ext = ".apk"
 
         if apkdir.exists():
-            shutil.rmtree(apkdir)
+            for f in os.listdir(apkdir):
+                os.unlink(f)
 
         # Build.
         interface.info(f"I'm using Gradle to build the {name} package.")
