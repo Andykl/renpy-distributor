@@ -385,7 +385,7 @@ class Interface(abc.ABC):
             tasks_args: Iterable[Iterable[Any]], *,
             timeout: float = 0.33,
             raise_on_exception: bool = True,
-    ) -> tuple[int, FutureException | _T]:
+    ) -> tuple[tuple[int, FutureException | _T]]:
         return tuple(i for i in self.run_in_thread_pool(
             func, tasks_prompts, tasks_args,
             timeout=timeout, raise_on_exception=raise_on_exception))
