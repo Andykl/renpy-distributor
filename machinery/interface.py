@@ -33,6 +33,7 @@ import platform
 import traceback
 import contextlib
 import threading
+import typing
 import webbrowser
 import requests
 
@@ -330,6 +331,23 @@ class Interface(abc.ABC):
             yes_thread.start()
 
         return p.wait()
+
+    @typing.overload
+    def background(self, prompt: str, f: Callable[..., _T],
+                   *func_args: Any, timeout: float = 0.33) -> _T:
+        ...
+
+    @typing.overload
+    def background(self, prompt: str, f: Callable[..., _T],
+                   *func_args: Any, timeout: float = 0.33,
+                   raise_on_exception: typing.Literal[True]) -> _T:
+        ...
+
+    @typing.overload
+    def background(self, prompt: str, f: Callable[..., _T],
+                   *func_args: Any, timeout: float = 0.33,
+                   raise_on_exception: typing.Literal[False]) -> _T | Exception:
+        ...
 
     def background(self, prompt: str, f: Callable[..., _T],
                    *func_args: Any, timeout: float = 0.33,
