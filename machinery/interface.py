@@ -261,6 +261,10 @@ class Interface(abc.ABC):
         """
 
         response = requests.get(url, stream=True)
+
+        # Error out if the request failed.
+        response.raise_for_status()
+
         total_length = response.headers.get('Content-Length')
         if total_length is None:
             def write_file_background():
