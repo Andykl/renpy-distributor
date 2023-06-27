@@ -315,7 +315,20 @@ def remove_pattern(lst: list[tuple[FilesPattern, FileListKind]], what: tuple[Fil
         raise ValueError(f"Expected a string, list of strings, or None, got {what[1]!r}.")
 
     search_w = (what[0], rfile_list)
-    lst[:] = [i for i in lst if i != search_w]
+    new_lst = [i for i in lst if i != search_w]
+    if len(new_lst) == len(lst):
+        canidates = []
+        for i in lst:
+            if i[0] == what[0]:
+                candidate = None if i[1] is None else " ".join(i[1])
+                canidates.append(candidate)
+        if len(canidates) > 1:
+            canidates = ", ".join(repr(i) for i in canidates)
+            canidates = f"one of {canidates}"
+        else:
+            canidates = repr(canidates[0])
+        raise ValueError(f"Could not remove pattern {what!r}, maybe you meant {canidates}?")
+    lst[:] = new_lst
 
 
 # Patterns that are used to classify Ren'Py.
