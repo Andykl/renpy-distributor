@@ -171,7 +171,7 @@ def classify_progressive_download(context: Context, interface: Interface):
     from .utils import ProgressiveRules, WebPackager
 
     rules: ProgressiveRules = context.progressive_download_rules
-    main_py_file = "renpy.py"
+    main_py_file = f"{context.build_info.executable_name}.py"
 
     with (WEB_PATH / "index.html").open("r", encoding='utf-8') as f:
         html_content = f.read()
@@ -193,6 +193,8 @@ def classify_progressive_download(context: Context, interface: Interface):
             elif name in ("web-presplash.png", "web-presplash.jpg", "web-presplash.webp"):
                 assert file.path is not None and file.path.exists()
                 presplash_f = file
+                file_list.add(file)
+                continue
 
             # This should be some system file.
             elif file.path is None or not (ext := file.path.suffix.lower()):
@@ -233,9 +235,6 @@ def classify_progressive_download(context: Context, interface: Interface):
             # single file list, so prepend directory to zip it later when placeholders
             # are created.
             packager.gamezip_file_list.add(file)
-
-        for file in (WEB_PATH / "core_files").iterdir():
-            file_list.add_file(file.name, file)
 
         if presplash_f is not None:
             html_content = html_content.replace("web-presplash.jpg", presplash_f.name)
@@ -299,6 +298,133 @@ def write_progressive_download(context: Context, interface: Interface):
     return True
 
 
+@task("Generate pwa icons...", kind="web",
+      requires="write_progressive_download", dependencies="write_archives")
+def generate_pwa_icons(context: Context, interface: Interface):
+    from .utils import WebPackager
+
+    icon_path = context.project_path("web-icon.png")
+
+    if not icon_path.exists():
+        icon_path = WEB_PATH / "web-icon.png"
+
+    if not icon_path.exists():
+        return False
+
+    if CONVERT_LIB == "PIL":
+        icon = PIL.Image.open(icon_path)
+        w, h = icon.size
+        def scale(surf, size): return surf.resize((size, size))
+        def save(surf, dst): return surf.save(dst)
+        def new(size): return PIL.Image.new(mode="RGBA", size=(size, size))
+        def blit(surf, dst, size): return surf.paste(dst, (size, size))
+    else:
+        icon = pygame_sdl2.image.load(str(icon_path))
+        w, h = icon.get_size()
+        def scale(surf, size): return pygame_sdl2.transform.smoothscale(surf, (size, size))
+        def save(surf, dst): return pygame_sdl2.image.save(surf, str(dst), 9)
+        def new(size): return pygame_sdl2.Surface((size, size), pygame_sdl2.SRCALPHA)
+        def blit(surf, dst, size): return surf.blit(str(dst), (size, size))
+
+    if w != h:
+        interface.exception("The icon must be square", RuntimeError)
+
+    if w < 512:
+        interface.exception("The icon must be at least 512x512 pixels", RuntimeError)
+
+    icons = context.temp_path("icons")
+    icons.mkdir(parents=True, exist_ok=True)
+
+    for packager in context.packagers.values():
+        if not isinstance(packager, WebPackager):
+            continue
+
+        save(scale(icon, 512) if w != 512 else icon, icons / "icon-512x512.png")
+        packager.file_list.add_file("icons/icon-512x512.png", icons / "icon-512x512.png")
+
+        for r in (72, 96, 128, 144, 152, 192, 384):
+            f = scale(icon, r)
+            save(f, icons / f"icon-{r}x{r}.png")
+            packager.file_list.add_file(f"icons/icon-{r}x{r}.png", icons / f"icon-{r}x{r}.png")
+
+        icon512_maskable = new(512)
+        blit(icon512_maskable, f, 64)
+
+        for r in (72, 96, 128, 144, 152, 192, 384, 512):
+            save(scale(icon512_maskable, r), icons / f"icon-{r}x{r}-maskable.png")
+            packager.file_list.add_file(f"icons/icon-{r}x{r}-maskable.png", icons / f"icon-{r}x{r}-maskable.png")
+
+    return True
+
+
+@task("Prepare pwa files...", kind="web",
+      requires="write_progressive_download", dependencies="write_archives")
+def prepare_pwa_files(context: Context, interface: Interface):
+    from .utils import WebPackager
+
+    for packager in context.packagers.values():
+        if not isinstance(packager, WebPackager):
+            continue
+
+        with open(WEB_PATH / "core_files" / "service-worker.js", encoding='utf-8') as f:
+            service_worker = f.read()
+
+        slugified_name = re.sub(r"\W+", "-", context.build_info.display_name).lower()
+        service_worker = service_worker.replace("renpy-web-game", slugified_name)
+
+        with open(context.temp_path("service-worker.js"), "w", encoding="utf-8") as f:
+            f.write(service_worker)
+
+        packager.file_list.add_file("service-worker.js", context.temp_path("service-worker.js"))
+
+        with open(WEB_PATH / "core_files" / "manifest.json", encoding="utf-8") as f:
+            manifest = json.load(f)
+
+        manifest["name"] = context.build_info.display_name
+
+        screen_size = (1920, 1080)
+
+        if screen_size[0] < screen_size[1]:
+            manifest["orientation"] = "portrait-primary"
+
+        with open(context.temp_path("manifest.json"), "w", encoding="utf-8") as f:
+            f.write(json.dumps(manifest))
+
+        packager.file_list.add_file("manifest.json", context.temp_path("manifest.json"))
+
+        catalog = {
+            "files": [],
+            "version": int(time.time())
+        }
+
+        for file in packager.file_list:
+            catalog["files"].append(file.name.replace("\\", "/"))
+
+        with open(context.temp_path("pwa_catalog.json"), "w", encoding="utf-8") as f:
+            f.write(json.dumps(catalog))
+
+        packager.file_list.add_file("pwa_catalog.json", context.temp_path("pwa_catalog.json"))
+
+    return True
+
+
+@task("Add core files...", kind="web",
+      requires="write_progressive_download", dependencies="write_archives")
+def add_core_files(context: Context, interface: Interface):
+    from .utils import WebPackager
+
+    for packager in context.packagers.values():
+        if not isinstance(packager, WebPackager):
+            continue
+
+        for file in (WEB_PATH / "core_files").iterdir():
+            if file.name in packager.file_list:
+                continue
+            packager.file_list.add_file(file.name, file)
+
+    return True
+
+
 @task("Finishing web packagers...", kind="web",
       requires="write_progressive_download", dependencies="write_packages")
 def zip_game(context: Context, interface: Interface):
@@ -315,5 +441,9 @@ def zip_game(context: Context, interface: Interface):
         packager.file_list.add_file("game.zip", packager.gamezip_outfile)
         packager.file_list.filter_empty()
         packager.file_list.add_missing_directories()
+
+        for file in packager.file_list:
+            if (dname := file.name.rpartition("/")[0]) and "/" in dname:
+                packager.gamezip_file_list.add_directory(dname, dname)
 
     return True
