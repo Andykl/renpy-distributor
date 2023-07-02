@@ -1,0 +1,8 @@
+# Downloaded WEB zip(s)
+web_*.zip
+
+# WEB static files
+core_files
+index.html
+web-icon.png
+web-presplash.jpg

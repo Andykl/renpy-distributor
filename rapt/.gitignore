@@ -12,5 +12,10 @@ Sdk
 commandlinetools-*
 sdk-tools-*
 
-# Keystore files
-*.keystore
+# Downloaded PART zip(s)
+rapt_*.zip
+
+# RAPT static files
+templates
+prototype
+bundletool.jar
