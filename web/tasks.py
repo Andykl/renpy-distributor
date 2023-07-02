@@ -30,13 +30,10 @@ import time
 from zipfile import ZipFile
 
 from .utils import WebContext as Context
-from ..machinery import CONVERT_LIB, task, Interface, File, FileList, TaskResult
+from ..machinery import task, Interface, File, FileList, TaskResult
 
-if CONVERT_LIB == "PIL":
-    import PIL.Image
-    import PIL.ImageChops
-else:
-    import pygame_sdl2
+import PIL.Image
+import PIL.ImageChops
 
 WEB_PATH = Path(__file__).parent
 
@@ -258,43 +255,36 @@ def write_progressive_download(context: Context, interface: Interface):
     from . import generate_placeholder
     from .utils import WebPackager
 
-    if generate_placeholder.CONVERT_LIB == "pygame":
-        manager = generate_placeholder.execute_in_pygame()
-    else:
-        from contextlib import nullcontext
-        manager = nullcontext()
-
     prefix = "game/"
-    with manager:
-        for (pname, format), packager in context.packagers.items():
-            if not isinstance(packager, WebPackager):
-                continue
+    for (pname, format), packager in context.packagers.items():
+        if not isinstance(packager, WebPackager):
+            continue
 
-            leni = len(packager.placeholders_files)
-            interface.start_progress_bar(
-                f"Converting progressive download placeholder for {format}")
+        leni = len(packager.placeholders_files)
+        interface.start_progress_bar(
+            f"Converting progressive download placeholder for {format}")
 
-            for i, (source_f, game_f) in enumerate(packager.placeholders_files.items(), start=1):
-                interface.update_progress_bar(f"{i}/{leni}")
+        for i, (source_f, game_f) in enumerate(packager.placeholders_files.items(), start=1):
+            interface.update_progress_bar(f"{i}/{leni}")
 
-                assert source_f.path is not None
-                assert game_f.path is not None
+            assert source_f.path is not None
+            assert game_f.path is not None
 
-                w, h = generate_placeholder.generate_image_placeholder(source_f.path, game_f.path)
+            w, h = generate_placeholder.generate_image_placeholder(source_f.path, game_f.path)
 
-                packager.remote_files[source_f] = f'image {w},{h}'
-            interface.progress_bar.done_enitity(0)  # type: ignore
-            interface.end_progress_bar()
+            packager.remote_files[source_f] = f'image {w},{h}'
+        interface.progress_bar.done_enitity(0)  # type: ignore
+        interface.end_progress_bar()
 
-            # A list of remote files for renpy.loader.
-            remote_files: dict[File, str] = packager.remote_files
-            temp_file = context.temp_path(f"{pname}-{format}_remote_files.txt")
-            with temp_file.open("w", encoding="utf-8") as file:
-                for f in sorted(remote_files, key=lambda f: f.name):
-                    print(f.name[len(prefix):], file=file)
-                    print(remote_files[f], file=file)
+        # A list of remote files for renpy.loader.
+        remote_files: dict[File, str] = packager.remote_files
+        temp_file = context.temp_path(f"{pname}-{format}_remote_files.txt")
+        with temp_file.open("w", encoding="utf-8") as file:
+            for f in sorted(remote_files, key=lambda f: f.name):
+                print(f.name[len(prefix):], file=file)
+                print(remote_files[f], file=file)
 
-            packager.gamezip_file_list.add_file('game/renpyweb_remote_files.txt', temp_file)
+        packager.gamezip_file_list.add_file('game/renpyweb_remote_files.txt', temp_file)
     return True
 
 
@@ -311,20 +301,20 @@ def generate_pwa_icons(context: Context, interface: Interface):
     if not icon_path.exists():
         return False
 
-    if CONVERT_LIB == "PIL":
-        icon = PIL.Image.open(icon_path)
-        w, h = icon.size
-        def scale(surf, size): return surf.resize((size, size))
-        def save(surf, dst): return surf.save(dst)
-        def new(size): return PIL.Image.new(mode="RGBA", size=(size, size))
-        def blit(surf, dst, size): return surf.paste(dst, (size, size))
-    else:
-        icon = pygame_sdl2.image.load(str(icon_path))
-        w, h = icon.get_size()
-        def scale(surf, size): return pygame_sdl2.transform.smoothscale(surf, (size, size))
-        def save(surf, dst): return pygame_sdl2.image.save(surf, str(dst), 9)
-        def new(size): return pygame_sdl2.Surface((size, size), pygame_sdl2.SRCALPHA)
-        def blit(surf, dst, size): return surf.blit(str(dst), (size, size))
+    icon = PIL.Image.open(icon_path)
+    w, h = icon.size
+
+    def scale(surf, size):
+        return surf.resize((size, size))
+
+    def save(surf, dst):
+        return surf.save(dst)
+
+    def new(size):
+        return PIL.Image.new(mode="RGBA", size=(size, size))
+
+    def blit(surf, dst, size):
+        return surf.paste(dst, (size, size))
 
     if w != h:
         interface.exception("The icon must be square", RuntimeError)

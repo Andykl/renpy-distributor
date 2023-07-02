@@ -75,15 +75,6 @@ from .model import (
     clear_tasks as clear_tasks,
 )
 
-import os
-from typing import cast
-
-CONVERT_LIB: Literal["PIL", "pygame"] = cast(
-    Literal["PIL", "pygame"],
-    os.environ.get("RENPY_DISTRIBUTOR_CONVERT_LIB", "pygame"))
-
-del os, cast
-
 if True:
     from . import packager
 

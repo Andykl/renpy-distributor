@@ -22,42 +22,21 @@
 from __future__ import annotations
 
 import shutil
+import typing
+import PIL.Image
+import PIL.ImageChops
 
-from typing import Any, Callable
-from contextlib import contextmanager
 from pathlib import Path
 
 from .plat import RAPT_PATH
 from .configuration import Configuration
-from ..machinery import CONVERT_LIB
-
-if CONVERT_LIB == "PIL":
-    import PIL.Image
-    import PIL.ImageChops
-else:
-    import pygame_sdl2
-
-_Surface = Any
 
 
-@contextmanager
-def execute_in_pygame():
-    if pygame_sdl2.display.get_surface():  # type: ignore
-        yield
-    else:
-        pygame_sdl2.display.init()  # type: ignore
-        pygame_sdl2.display.hint("PYGAME_SDL2_AVOID_GL", "1")  # type: ignore
-        pygame_sdl2.display.set_mode((640, 480))  # type: ignore
-        pygame_sdl2.event.pump()  # type: ignore
-        try:
-            yield
-        finally:
-            pygame_sdl2.display.quit()  # type: ignore
+_ScaleFunc = typing.Callable[[int], PIL.Image.Image]
 
 
 class IconMaker:
     def __init__(self, project_dir: Path, project_path: Path, config: Configuration):
-        from contextlib import nullcontext
 
         self.config: Configuration = config
         self.project_dir = project_dir
@@ -71,24 +50,12 @@ class IconMaker:
             ("xxxhdpi", 4),
         ]
 
-        if CONVERT_LIB == "PIL":
-            manager = nullcontext(None)
-        else:
-            manager = execute_in_pygame()
+        for dpi, scale in sizes:
+            self.write_dpi(dpi, scale)
 
-        with manager:
-            for dpi, scale in sizes:
-                self.write_dpi(dpi, scale)
-
-    def scale(self, surf: _Surface, size: int):
-
-        w: int
-        h: int
+    def scale(self, surf: PIL.Image.Image, size: int):
         while True:
-            if CONVERT_LIB == "PIL":
-                w, h = surf.size
-            else:
-                w, h = surf.get_size()
+            w, h = surf.size
 
             if (w == size) and (h == size):
                 break
@@ -96,27 +63,20 @@ class IconMaker:
             w = max(w // 2, size)
             h = max(h // 2, size)
 
-            if CONVERT_LIB == "PIL":
-                surf = surf.resize((w, h))
-            else:
-                surf = pygame_sdl2.transform.smoothscale(surf, (w, h))  # type: ignore
+            surf = surf.resize((w, h))
 
         return surf
 
-    def load_image(self, fn: str):
+    def load_image(self, fn: str) -> PIL.Image.Image:
 
         for i in [self.project_dir / fn, RAPT_PATH / "templates" / fn]:
             if i.exists():
-                if CONVERT_LIB == "PIL":
-                    surf = PIL.Image.open(i)
-                    surf.load()
+                surf = PIL.Image.open(i)
+                surf.load()
 
-                    if surf.mode != "RGBA":
-                        surf = surf.convert("RGBA")
+                if surf.mode != "RGBA":
+                    surf = surf.convert("RGBA")
 
-                else:
-                    surf: _Surface = pygame_sdl2.image.load(str(i))  # type: ignore
-                    surf = surf.convert_alpha()
                 return surf
 
         else:
@@ -137,23 +97,15 @@ class IconMaker:
 
         mask = self.scale(self.load_image("android-icon_mask.png"), size)
 
-        if CONVERT_LIB == "PIL":
-            icon.paste(fg, (0, 0))
+        icon.paste(fg, (0, 0))
 
-            icon = icon.crop((offset, offset, size, size))
+        icon = icon.crop((offset, offset, size, size))
 
-            icon = PIL.ImageChops.multiply(icon, mask)
-
-        else:
-            icon.blit(fg, (0, 0))
-
-            icon = icon.subsurface((offset, offset, size, size))
-
-            icon.blit(mask, (0, 0), None, pygame_sdl2.BLEND_RGBA_MULT)  # type: ignore
+        icon = PIL.ImageChops.multiply(icon, mask)
 
         return icon
 
-    def write_icon(self, name: str, dpi: str, scale: float, size: int, generator: Callable[[int], _Surface]):
+    def write_icon(self, name: str, dpi: str, scale: float, size: int, generator: _ScaleFunc):
 
         dst = self.project_path / f"app/src/main/res/mipmap-{dpi}/{name}.png"
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -168,10 +120,7 @@ class IconMaker:
         surf = generator(int(scale * size))
 
         if self.config.update_always or not dst.exists():
-            if CONVERT_LIB == "PIL":
-                surf.save(dst)
-            else:
-                pygame_sdl2.image.save(surf, str(dst))  # type: ignore
+            surf.save(dst)
 
     def write_dpi(self, dpi: str, scale: float):
         self.write_icon("icon_background", dpi, scale, 108, self.load_background)
