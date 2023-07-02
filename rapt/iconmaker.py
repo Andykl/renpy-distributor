@@ -109,6 +109,11 @@ class IconMaker:
             if i.exists():
                 if CONVERT_LIB == "PIL":
                     surf = PIL.Image.open(i)
+                    surf.load()
+
+                    if surf.mode != "RGBA":
+                        surf = surf.convert("RGBA")
+
                 else:
                     surf: _Surface = pygame_sdl2.image.load(str(i))  # type: ignore
                     surf = surf.convert_alpha()
