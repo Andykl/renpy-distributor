@@ -376,9 +376,9 @@ def create_icons(context: Context, interface: Interface):
 
     # Copy the presplash files.
     shutil.copy(presplash, context.temp_path("project/app/src/main/assets",
-                                             f"android-presplash.{presplash.suffix}"))
+                                             f"android-presplash{presplash.suffix}"))
     shutil.copy(downloading, context.temp_path("project/app/src/main/assets",
-                                               f"android-downloading.{downloading.suffix}"))
+                                               f"android-downloading{downloading.suffix}"))
 
     return True
 
