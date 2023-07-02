@@ -150,8 +150,8 @@ def update_dump(context: Context, interface: Interface):
         def get_dump():
             return interface.run_subprocess(*context.get_launch_args(*cmd), env=env)
 
-        interface.background("Launching the game", get_dump)
-        if dump_filename.exists():
+        rv = interface.background("Launching the game", get_dump)
+        if (not rv) and dump_filename.exists():
             try:
                 with dump_filename.open("r", encoding="utf-8") as f:
                     with f:
