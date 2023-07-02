@@ -404,6 +404,7 @@ class BuildInfo:
             data.pop("mac_codesign_dmg_command", None)
 
         data.pop("itch_project", None)
+        data.pop("itch_channels", None)
 
         # All fields below are ignored.
         # Either it has a replacement in the model or it is obsolete.
