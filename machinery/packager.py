@@ -27,7 +27,7 @@ import zipfile
 import shutil
 import tarfile
 
-from typing import Any, Iterator, overload, cast, TYPE_CHECKING
+from typing import Any, Iterator, cast, TYPE_CHECKING
 from pathlib import Path
 
 from .file_utils import FileList
@@ -80,21 +80,9 @@ class Packager(abc.ABC):
 
         self.outpath = outpath
 
-    @overload
     @classmethod
     @abc.abstractmethod
     def init_package(cls, build_info: BuildInfo, outfile: Path, /) -> Packager | None:
-        ...
-
-    @overload
-    @classmethod
-    @abc.abstractmethod
-    def init_package(cls, build_info: BuildInfo, outfile: Path, /, *_: Any) -> Packager | None:
-        ...
-
-    @classmethod
-    @abc.abstractmethod
-    def init_package(cls, build_info: BuildInfo, outfile: Path, /, *_: Any) -> Packager | None:
         ...
 
     def finish_file_list(self):
@@ -318,7 +306,7 @@ class DMGPackager(DirectoryPackager):
 
 class RaisePackager(Packager):
     @classmethod
-    def init_package(cls, build_info: BuildInfo, outfile: Path, reason: str, *_):
+    def init_package(cls, build_info: BuildInfo, outfile: Path, reason: str, *ignore):
         raise RuntimeError(reason)
 
     def write_file(self, name: str, path: Path, xbit: bool):

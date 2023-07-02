@@ -302,6 +302,11 @@ def generate_pwa_icons(context: Context, interface: Interface):
         return False
 
     icon = PIL.Image.open(icon_path)
+    icon.load()
+
+    if icon.mode != "RGBA":
+        icon = icon.convert("RGBA")
+
     w, h = icon.size
 
     def scale(surf, size):
@@ -317,10 +322,10 @@ def generate_pwa_icons(context: Context, interface: Interface):
         return surf.paste(dst, (size, size))
 
     if w != h:
-        interface.exception("The icon must be square", RuntimeError)
+        interface.exception("The icon must be square", RuntimeError())
 
     if w < 512:
-        interface.exception("The icon must be at least 512x512 pixels", RuntimeError)
+        interface.exception("The icon must be at least 512x512 pixels", RuntimeError())
 
     icons = context.temp_path("icons")
     icons.mkdir(parents=True, exist_ok=True)
@@ -332,10 +337,13 @@ def generate_pwa_icons(context: Context, interface: Interface):
         save(scale(icon, 512) if w != 512 else icon, icons / "icon-512x512.png")
         packager.file_list.add_file("icons/icon-512x512.png", icons / "icon-512x512.png")
 
+        f = None
         for r in (72, 96, 128, 144, 152, 192, 384):
             f = scale(icon, r)
             save(f, icons / f"icon-{r}x{r}.png")
             packager.file_list.add_file(f"icons/icon-{r}x{r}.png", icons / f"icon-{r}x{r}.png")
+
+        assert f is not None
 
         icon512_maskable = new(512)
         blit(icon512_maskable, f, 64)
@@ -382,16 +390,15 @@ def prepare_pwa_files(context: Context, interface: Interface):
 
         packager.file_list.add_file("manifest.json", context.temp_path("manifest.json"))
 
-        catalog = {
-            "files": [],
-            "version": int(time.time())
-        }
-
+        catalog_files: list[str] = []
         for file in packager.file_list:
-            catalog["files"].append(file.name.replace("\\", "/"))
+            catalog_files.append(file.name.replace("\\", "/"))
 
-        with open(context.temp_path("pwa_catalog.json"), "w", encoding="utf-8") as f:
-            f.write(json.dumps(catalog))
+        with context.temp_path("pwa_catalog.json").open("w", encoding="utf-8") as f:
+            json.dump({
+                "files": catalog_files,
+                "version": int(time.time())
+            }, f, indent=4, sort_keys=True)
 
         packager.file_list.add_file("pwa_catalog.json", context.temp_path("pwa_catalog.json"))
 
@@ -434,6 +441,7 @@ def zip_game(context: Context, interface: Interface):
 
         for file in packager.file_list:
             if (dname := file.name.rpartition("/")[0]) and "/" in dname:
-                packager.gamezip_file_list.add_directory(dname, dname)
+                dname_p = Path(dname)
+                packager.gamezip_file_list.add_directory(dname, dname_p)
 
     return True

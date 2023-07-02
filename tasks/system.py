@@ -219,7 +219,7 @@ def init_build_platforms(context: Context, interface: Interface):
     for name in context.build_packages:
         package = context.build_info.packages[name]
         kinds.update(package.platforms)
-    context.build_platforms = kinds
+    context.build_platforms = kinds  # type: ignore
     return True
 
 
