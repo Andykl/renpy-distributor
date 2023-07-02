@@ -21,6 +21,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 import shutil
 
@@ -28,12 +29,80 @@ from pathlib import Path
 from typing import Literal
 
 from . import plat
+from .install_sdk import FixedZipFile
 from .plat import RAPT_PATH
 from ..machinery import Interface, TaskResult, task
 from .build import AndroidContext as Context
 
 
 RuleKind = Literal["image", "music", "voice"]
+
+
+@task("Updating RAPT static files...", kind="android",
+      requires="init_build_platforms", dependencies="init_classifier_file_lists")
+def update_rapt_static_files(context: Context, interface: Interface):
+    """
+    This downloading libraries from the (
+        https://nightly.renpy.org/
+        http://update.renpy.org/
+    )
+    """
+    from renpy import version_tuple, nightly
+
+    if nightly:
+        name = ".".join(str(i) for i in version_tuple)
+        name = f"{name}+nightly"
+        url = f"https://nightly.renpy.org/{name}/renpy-{name}-rapt.zip"
+    else:
+        name = ".".join(str(i) for i in version_tuple[:-1])
+        url = f"http://update.renpy.org/{name}/renpy-{name}-rapt.zip"
+
+    try:
+        with (RAPT_PATH / "current_version.txt").open("r", encoding="utf-8") as f:
+            current_version = f.read().strip()
+    except FileNotFoundError:
+        current_version = None
+
+    if current_version == name:
+        interface.info(f"RAPT static files are up-to-date.")
+        return TaskResult.SKIPPED
+
+    archive = RAPT_PATH / f"rapt_{name}.zip"
+
+    if not archive.exists():
+        interface.download(f"I'm downloading the RAPT", url, archive)
+
+    assert archive.exists()
+
+    interface.info(f"I'm extracting the RAPT.")
+
+    old_cwd = os.getcwd()
+    os.chdir(RAPT_PATH)
+
+    if Path("rapt").exists():
+        shutil.rmtree("rapt")
+
+    with FixedZipFile(archive) as zip:
+        zip.extractall()
+
+    for m in ("prototype", "templates"):
+        # Remove the old directory, so we don't have any old files.
+        shutil.rmtree(RAPT_PATH / m, ignore_errors=True)
+        shutil.copytree(RAPT_PATH / "rapt" / m, RAPT_PATH / m, dirs_exist_ok=True)
+
+    shutil.copy2(RAPT_PATH / "rapt" / "bundletool.jar", RAPT_PATH / "bundletool.jar")
+
+    if Path("rapt").exists():
+        shutil.rmtree("rapt")
+
+    os.chdir(old_cwd)
+
+    with (RAPT_PATH / "current_version.txt").open("w", encoding="utf-8") as f:
+        f.write(name)
+
+    interface.success(f"I've finished unpacking the RAPT.")
+
+    return True
 
 
 @task("Reading .android.json configuration...", kind="android",

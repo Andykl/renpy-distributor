@@ -22,11 +22,96 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
+import os
+import json
+import shutil
+import time
+from zipfile import ZipFile
 
 from .utils import WebContext as Context
-from ..machinery import task, Interface, File, FileList
+from ..machinery import CONVERT_LIB, task, Interface, File, FileList, TaskResult
+
+if CONVERT_LIB == "PIL":
+    import PIL.Image
+    import PIL.ImageChops
+else:
+    import pygame_sdl2
 
 WEB_PATH = Path(__file__).parent
+
+
+@task("Updating WEB static files...", kind="web",
+      requires="init_build_platforms", dependencies="init_classifier_file_lists")
+def update_web_static_files(context: Context, interface: Interface):
+    """
+    This downloading libraries from the (
+        https://nightly.renpy.org/
+        http://update.renpy.org/
+    )
+    """
+    from renpy import version_tuple, nightly
+
+    if nightly:
+        name = ".".join(str(i) for i in version_tuple)
+        name = f"{name}+nightly"
+        url = f"https://nightly.renpy.org/{name}/renpy-{name}-web.zip"
+    else:
+        name = ".".join(str(i) for i in version_tuple[:-1])
+        url = f"http://update.renpy.org/{name}/renpy-{name}-web.zip"
+
+    try:
+        with (WEB_PATH / "current_version.txt").open("r", encoding="utf-8") as f:
+            current_version = f.read().strip()
+    except FileNotFoundError:
+        current_version = None
+
+    if current_version == name:
+        interface.info(f"WEB static files are up-to-date.")
+        return TaskResult.SKIPPED
+
+    archive = WEB_PATH / f"web_{name}.zip"
+
+    if not archive.exists():
+        interface.download(f"I'm downloading the WEB", url, archive)
+
+    assert archive.exists()
+
+    interface.info(f"I'm extracting the WEB.")
+
+    old_cwd = os.getcwd()
+    os.chdir(WEB_PATH)
+
+    if Path("web").exists():
+        shutil.rmtree("web")
+
+    with ZipFile(archive) as zip:
+        zip.extractall()
+
+    # Remove old core_files directory, so we don't have to worry about
+    # renamed or deleted files.
+    shutil.rmtree(WEB_PATH / "core_files", ignore_errors=True)
+    (WEB_PATH / "core_files").mkdir()
+
+    for m in (WEB_PATH / "web").rglob("*"):
+        if m.name in (
+            "index.html", "web-icon.png", "web-presplash.jpg",
+        ):
+            shutil.copy2(m, WEB_PATH / m.name)
+        else:
+            shutil.copy2(m, WEB_PATH / "core_files" / m.name)
+
+    if Path("web").exists():
+        shutil.rmtree("web")
+
+    os.chdir(old_cwd)
+
+    with (WEB_PATH / "current_version.txt").open("w", encoding="utf-8") as f:
+        f.write(name)
+
+    interface.success(f"I've finished unpacking the WEB.")
+
+    return True
 
 
 @task("Initialising web rules...", kind="web",
