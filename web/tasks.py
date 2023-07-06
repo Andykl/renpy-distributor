@@ -57,16 +57,6 @@ def update_web_static_files(context: Context, interface: Interface):
         name = ".".join(str(i) for i in version_tuple[:-1])
         url = f"http://update.renpy.org/{name}/renpy-{name}-web.zip"
 
-    try:
-        with (WEB_PATH / "current_version.txt").open("r", encoding="utf-8") as f:
-            current_version = f.read().strip()
-    except FileNotFoundError:
-        current_version = None
-
-    if current_version == name:
-        interface.info(f"WEB static files are up-to-date.")
-        return TaskResult.SKIPPED
-
     archive = WEB_PATH / f"web_{name}.zip"
 
     if not archive.exists():
@@ -74,7 +64,7 @@ def update_web_static_files(context: Context, interface: Interface):
 
     assert archive.exists()
 
-    interface.info(f"I'm extracting the WEB.")
+    interface.info(f"I'm extracting the WEB...")
 
     old_cwd = os.getcwd()
     os.chdir(WEB_PATH)
@@ -102,9 +92,6 @@ def update_web_static_files(context: Context, interface: Interface):
         shutil.rmtree("web")
 
     os.chdir(old_cwd)
-
-    with (WEB_PATH / "current_version.txt").open("w", encoding="utf-8") as f:
-        f.write(name)
 
     interface.success(f"I've finished unpacking the WEB.")
 

@@ -57,16 +57,6 @@ def update_rapt_static_files(context: Context, interface: Interface):
         name = ".".join(str(i) for i in version_tuple[:-1])
         url = f"http://update.renpy.org/{name}/renpy-{name}-rapt.zip"
 
-    try:
-        with (RAPT_PATH / "current_version.txt").open("r", encoding="utf-8") as f:
-            current_version = f.read().strip()
-    except FileNotFoundError:
-        current_version = None
-
-    if current_version == name:
-        interface.info(f"RAPT static files are up-to-date.")
-        return TaskResult.SKIPPED
-
     archive = RAPT_PATH / f"rapt_{name}.zip"
 
     if not archive.exists():
@@ -74,7 +64,7 @@ def update_rapt_static_files(context: Context, interface: Interface):
 
     assert archive.exists()
 
-    interface.info(f"I'm extracting the RAPT.")
+    interface.info(f"I'm extracting the RAPT...")
 
     old_cwd = os.getcwd()
     os.chdir(RAPT_PATH)
@@ -96,9 +86,6 @@ def update_rapt_static_files(context: Context, interface: Interface):
         shutil.rmtree("rapt")
 
     os.chdir(old_cwd)
-
-    with (RAPT_PATH / "current_version.txt").open("w", encoding="utf-8") as f:
-        f.write(name)
 
     interface.success(f"I've finished unpacking the RAPT.")
 
