@@ -21,6 +21,8 @@
 
 from __future__ import annotations
 
+from ..machinery.model import TaskResult
+
 from ..machinery import Interface, task
 from .. import BuildContext as Context
 
@@ -273,12 +275,14 @@ def rename(context: Context, interface: Interface):
     return True
 
 
-@task()
+@task("Moving SDK fonts...")
 def move_sdk_fonts(context: Context, interface: Interface):
-    if (
-            context.project_dir == context.sdk_dir / "the_question" or
-            context.project_dir == context.sdk_dir / "tutorial"):
-        interface.info("Moving SDK fonts...")
-        for fl in context.classifier_file_lists.values():
-            fl.reprefix("sdk-fonts/", "game/")
+    if not (
+        context.project_dir == context.sdk_dir / "the_question" or
+        context.project_dir == context.sdk_dir / "tutorial"
+    ):
+        return TaskResult.SKIPPED
+
+    for fl in context.classifier_file_lists.values():
+        fl.reprefix("sdk-fonts/", "game/")
     return True

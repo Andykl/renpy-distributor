@@ -30,6 +30,8 @@ if __name__ == "__main__" and not __package__:
         sys.path.append(str(pathlib.Path(__file__).parents[2]))
     __package__ = "build.distributor"
 
+from . import machinery, BuildContext, CLIInterface
+
 parser = argparse.ArgumentParser(
     "-m distributor",
     description="Distributor of RenPy games.",
@@ -98,20 +100,51 @@ build_parser.add_argument(
     help="Prevents updates from being built.")
 
 
-if __name__ == "__main__":
-    from .machinery.interface import CLIInterface
-    from . import build_game, get_build_info, BuildContext
+def build_game(context: BuildContext, interface: machinery.Interface):
+    from .tasks import system, classify, prepare_build, build
+    from .web import tasks as web_tasks
+    from .rapt import tasks as rapt_tasks
 
+    runner = machinery.Runner(context, interface)
+    runner.register_tasks_from(system)
+    runner.register_tasks_from(classify)
+    runner.register_tasks_from(prepare_build)
+    runner.register_tasks_from(build)
+    runner.register_tasks_from(web_tasks)
+    runner.register_tasks_from(rapt_tasks)
+    return runner.run()
+
+
+def get_build_info(context: BuildContext, interface: machinery.Interface):
+    from .tasks import system
+    from .web import tasks as web_tasks
+    from .rapt import tasks as rapt_tasks
+
+    runner = machinery.Runner(context, interface)
+    runner.register_tasks_from(system)
+
+    def _(context: BuildContext, interface: machinery.Interface):
+        interface.final_success("Done.")
+
+    task = machinery.create_task(
+        "Quitting...", _,
+        requires="update_dump", dependencies="check_package")
+    runner.register_task("exit", task)
+
+    if runner.run():
+        raise Exception("Could not get build info.")
+
+    return context.build_info
+
+
+if __name__ == "__main__":
     args = parser.parse_args()
     if args.command == "build":
-        # Convert list to set so we do not lie about our type.
-        args.build_packages = set(args.build_packages)
-
         context = BuildContext(**args.__dict__)
         sys.exit(build_game(context, CLIInterface(context.verbose, context.silent)))
 
     elif args.command == "buildinfo":
-        context = BuildContext(**args.__dict__, silent=True, verbose=True)
+        context = BuildContext(**args.__dict__, silent=True, verbose=False)
         interface = CLIInterface(context.verbose, context.silent)
         print(get_build_info(context, interface))
         sys.exit(0)

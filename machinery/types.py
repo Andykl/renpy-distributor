@@ -21,18 +21,17 @@
 
 from __future__ import annotations
 
-from typing import Literal, Union
+import typing as t
 
 FilesPattern = str
 FileListName = str
-FileListKind = Union[tuple[FileListName, ...], None]
+FileListKind = t.Union[tuple[FileListName, ...], None]
 
 FormatKind = str
 ArchiveKind = str
 
-PlatfromKind = Literal["win", "linux", "mac", "android", "ios", "web"]
+PlatfromKind = t.Literal["win", "linux", "mac", "android", "ios", "web"]
 PlatfromSetKind = set[PlatfromKind]
 KNOWN_PLATFORMS: PlatfromSetKind = {"win", "linux", "mac", "android", "ios", "web"}
 
-SystemKind = Literal["system"]
-TaskKind = Union[SystemKind, PlatfromSetKind]
+del t

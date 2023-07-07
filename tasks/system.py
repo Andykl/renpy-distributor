@@ -21,23 +21,24 @@
 
 from __future__ import annotations
 
-import pathlib
+from pathlib import Path
 
-from ..machinery import Interface, task, TaskResult
+from ..machinery import Interface, task
 from .. import BuildContext as Context
 
 
 # Init phase - populate build properties before actual build.
-def check_path(
-    arg: str | pathlib.Path, name: str, *,
+def _check_path(
+    interface: Interface,
+    arg: str | Path, name: str, *,
     should_exist: bool = False,
     should_writible: bool = False,
 ):
-    path = pathlib.Path(arg).resolve()
+    path = Path(arg).resolve()
     if should_exist and not path.exists():
-        raise FileNotFoundError(f"{name} does not exists.")
+        interface.fail(f"{name} does not exists.")
     if path.is_file():
-        raise NotADirectoryError(f"{name} can not refer to a file.")
+        interface.fail(f"{name} can not refer to a file.")
 
     if should_writible:
         path.mkdir(parents=True, exist_ok=True)
@@ -46,69 +47,76 @@ def check_path(
             (path / "test.txt").open("r").close()
             (path / "test.txt").unlink()
         except OSError:
-            raise Exception(f"{name} is not writable.")
+            interface.fail(f"{name} is not writable.")
 
     return path
 
 
-@task("Checking build properties...", kind="system")
+@task("Checking build properties...")
 def check_properties(context: Context, interface: Interface):
-    context.project_dir = check_path(context.project_dir,
-                                     "project-dir", should_exist=True)
+    context.project_dir = _check_path(interface, context.project_dir,
+                                      "project-dir", should_exist=True)
 
-    context.sdk_dir = check_path(context.sdk_dir,
-                                 "sdk-dir", should_exist=True)
+    context.sdk_dir = _check_path(interface, context.sdk_dir,
+                                  "sdk-dir", should_exist=True)
 
     if not context.tmp_dir:
         context.tmp_dir = context.sdk_path("tmp", context.project_dir.name)
 
-    context.tmp_dir = check_path(context.tmp_dir,
-                                 "tmp-dir", should_writible=True)
+    context.tmp_dir = _check_path(interface, context.tmp_dir,
+                                  "tmp-dir", should_writible=True)
 
     if context.fresh and context.tmp_dir.exists():
         import shutil
 
         # Since LOG-FILE can be in TMP-DIR we can not rmtree it.
+        log_fn = context.log_file.resolve()
         for p in context.tmp_dir.iterdir():
             if p.is_dir():
                 shutil.rmtree(p)
-            elif p != context.log_file.resolve():
+            elif p != log_fn:
                 p.unlink()
 
     return True
 
 
-@task(kind="system")
+@task("Adding Ren'Py paths...")
 def renpy_to_syspath(context: Context, interface: Interface):
     import sys
     import os
 
-    if pathlib.Path(sys.executable).is_relative_to(context.sdk_dir):
-        return TaskResult.SKIPPED
-
-    interface.info("Adding RenPy paths...")
-
+    # Add SDK-dir to sys.path, so we can import 'renpy'.
     if str(context.sdk_dir) not in sys.path:
         sys.path.append(str(context.sdk_dir))
 
+    # Add SDK python libs, so we can import non-stdlib modules added by Ren'Py.
     if str(context.sdk_dir / "lib" / "python3.9") not in sys.path:
         sys.path.append(str(context.sdk_dir / "lib" / "python3.9"))
 
     # Find the python executable to run.
     if os.name == 'nt':
+        executable = "python.exe"
         lib = "py3-windows-x86_64"
     elif sys.platform == "darwin":
+        executable = "python"
         lib = "py3-mac-universal"
     else:
+        executable = "python"
         lib = "py3-linux-x86_64"
 
+    # Ditto.
     if str(context.sdk_dir / "lib" / lib) not in sys.path:
         sys.path.append(str(context.sdk_dir / "lib" / lib))
 
+    executable_path = context.sdk_dir / "lib" / lib / executable
+    if not executable_path.exists():
+        interface.fail(f"Ren'Py interpreter does not exists: {executable_path.as_posix()}")
+
+    context.renpy_python = executable_path
     return True
 
 
-@task("Retrieving build info...", kind="system")
+@task("Retrieving build info...")
 def update_dump(context: Context, interface: Interface):
     from ..machinery import BuildInfo
     import os
@@ -176,11 +184,12 @@ def update_dump(context: Context, interface: Interface):
             interface.fail("Neither OUTPUT-DIR nor destination is set - there is nowhere to write.")
         output_dir = context.project_dir / ".." / destination
 
-    context.output_dir = check_path(output_dir, "output-dir", should_writible=True)
+    context.output_dir = _check_path(interface, output_dir,
+                                     "output-dir", should_writible=True)
     return True
 
 
-@task("Checking chosen packages...", kind="system")
+@task("Checking chosen packages...")
 def check_package(context: Context, interface: Interface):
     all_packages = list(context.build_info.packages)
 
@@ -211,7 +220,7 @@ def check_package(context: Context, interface: Interface):
     return True
 
 
-@task("Initialising build platforms...", kind="system")
+@task("Initialising build platforms...")
 def init_build_platforms(context: Context, interface: Interface):
     from ..machinery import PlatfromSetKind
 
@@ -223,7 +232,7 @@ def init_build_platforms(context: Context, interface: Interface):
     return True
 
 
-@task("Initialising clasifier file lists...", kind="system")
+@task("Initialising clasifier file lists...")
 def init_classifier_file_lists(context: Context, interface: Interface):
     from ..machinery import FileList
 

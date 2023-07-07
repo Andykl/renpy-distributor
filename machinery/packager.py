@@ -302,18 +302,3 @@ class DMGPackager(DirectoryPackager):
             return None
 
         return cls(outfile)
-
-
-class RaisePackager(Packager):
-    @classmethod
-    def init_package(cls, build_info: BuildInfo, outfile: Path, reason: str, *ignore):
-        raise RuntimeError(reason)
-
-    def write_file(self, name: str, path: Path, xbit: bool):
-        raise
-
-    def write_directory(self, name: str, path: Path):
-        raise
-
-    def write(self):
-        raise

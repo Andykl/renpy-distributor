@@ -23,18 +23,13 @@ from __future__ import annotations
 
 import io
 from math import ceil
-import os
 import subprocess
 import sys
 import abc
 import time
-import textwrap
-import platform
-import traceback
 import contextlib
 import threading
 import typing
-import webbrowser
 import requests
 
 import concurrent.futures as futures
@@ -45,16 +40,6 @@ from typing import (
     Iterator, Literal, NoReturn,
     TypeVar, Iterable, cast
 )
-
-
-class InterfaceExit(SystemExit):
-    pass
-
-
-class FutureException(RuntimeError):
-    def __init__(self, index: int) -> None:
-        super().__init__(index)
-        self.index = index
 
 
 _T = TypeVar("_T")
@@ -179,7 +164,7 @@ class Interface(abc.ABC):
         """
         Displays `prompt` as the last success message of an operation.
         """
-        raise InterfaceExit(0)
+        raise SystemExit(0)
 
     @abc.abstractmethod
     def exception(self, prompt: str, exception: BaseException | None = None) -> None:
@@ -193,7 +178,7 @@ class Interface(abc.ABC):
         """
         Causes the program to terminate with a `prompt` message and error return code code.
         """
-        raise InterfaceExit(-1)
+        raise SystemExit(-1)
 
     # Interaction methods
     @abc.abstractmethod
@@ -402,19 +387,25 @@ class Interface(abc.ABC):
             tasks_prompts: Iterable[str],
             tasks_args: Iterable[Iterable[Any]], *,
             timeout: float = 0.33,
-            raise_on_exception: bool = True,
-    ) -> tuple[tuple[int, FutureException | _T]]:
-        return tuple(i for i in self.run_in_thread_pool(
-            func, tasks_prompts, tasks_args,
-            timeout=timeout, raise_on_exception=raise_on_exception))
+    ) -> tuple[tuple[int, _T]]:
+        """
+        TODO
+        """
+
+        iterator = self.run_in_thread_pool(
+            func,
+            tasks_prompts,
+            tasks_args,
+            timeout=timeout,
+        )
+        return tuple(iterator)
 
     def run_in_thread_pool(
             self, func: Callable[..., PoolGenerator[_T]],
             tasks_prompts: Iterable[str],
             tasks_args: Iterable[Iterable[Any]], *,
             timeout: float = 0.33,
-            raise_on_exception: bool = True,
-    ) -> Iterator[tuple[int, FutureException | _T]]:
+    ) -> Iterator[tuple[int, _T]]:
         """
         TODO
         """
@@ -455,18 +446,8 @@ class Interface(abc.ABC):
                     try:
                         data = future.result()
 
-                    except Exception as exc:
-                        if raise_on_exception:
-                            progress_bar.error_entity(i, halt_others=True)
-                            self.end_progress_bar()
-
-                            raise FutureException(i) from exc
-                        else:
-                            data = FutureException(i)
-                            data.__cause__ = exc
-                            yield (i, data)
-
                     except BaseException:
+                        progress_bar.error_entity(i, halt_others=True)
                         self.end_progress_bar()
                         raise
 
@@ -496,231 +477,3 @@ class Interface(abc.ABC):
     @abc.abstractmethod
     def end_progress_bar(self) -> None:
         self.progress_bar = None
-
-
-class CLIInterface(Interface):
-    """
-    Displays progress on the command line.
-    """
-
-    progress_bar: ProgressBar[str] | None
-
-    def __init__(self, verbose: bool, silent: bool):
-        super().__init__(verbose, silent)
-        self.current_progress: str | None = None
-        self.progress_delta: bool = False
-
-    def _write(self, s: str, add_interaction: bool, verbose: bool, wrap: bool = True):
-        if not s:
-            return
-
-        # Special case for \n or \n\n
-        elif set(s) == {"\n"}:
-            wrap = False
-
-        if wrap:
-            wrapped = "\n".join(
-                textwrap.fill(i, width=160) for i in s.split("\n\n"))
-        else:
-            wrapped = s
-
-        # In silent mode print to stdout only if we really need it.
-        if (not self.silent) or verbose:
-            print(wrapped, file=sys.__stdout__)
-
-        if add_interaction:
-            self.interactions.append(wrapped)
-
-    def info(self, prompt: str, verbose: bool = False):
-        if verbose and not self.verbose:
-            return
-
-        self._write(prompt, True, verbose)
-
-    def success(self, prompt: str):
-        self.info(prompt, verbose=True)
-
-    def final_success(self, prompt: str):
-        self._write(prompt, True, True)
-        raise InterfaceExit(0)
-
-    def exception(self, prompt: str, exception: BaseException | None = None):
-        exc = exception
-        if exc is None:
-            exc = sys.exc_info()[1]
-
-        if exc is None:
-            return
-
-        self._write(f"{prompt} - {exc!r}", True, True, False)
-        self.interactions.extend(
-            traceback.format_exception(type(exc), exc, exc.__traceback__))
-
-    def fail(self, prompt: str):
-        self.pause(prompt)
-        raise InterfaceExit(-1)
-
-    # Interaction methods
-    def pause(self, prompt: str):
-        self._write(prompt, True, True)
-
-        if platform.system() == "Windows":
-            os.system("pause")
-        else:
-            os.system("/bin/bash -c 'read -s -n 1 -p \"Press any key to continue...\"'")
-            sys.__stdout__.write("\n")
-
-    def input(self, prompt: str, empty: str | None = None):
-        orig_prompt = prompt
-
-        if empty:
-            prompt += f" [{empty}]> "
-        else:
-            prompt += " > "
-
-        rv = ""
-        while True:
-            try:
-                rv = input(prompt).strip()
-            except BaseException:
-                self._write("\n", False, True)
-                raise
-
-            if rv:
-                break
-
-            if empty is not None:
-                rv = empty
-                break
-
-        self.interactions.append(f"{orig_prompt} - {rv or 'NO INPUT'}")
-        return rv
-
-    def choice(self, prompt: str, choices: list[tuple[Any, str]], default: Any | None = None):
-
-        default_choice = None
-
-        self._write(prompt, True, True)
-        for i, (value, label) in enumerate(choices, start=1):
-            if value == default:
-                default_choice = i
-
-            self._write(f"{i}) {label}", True, True)
-
-        if default_choice is not None:
-            prompt = f"1-{len(choices)} [{default_choice}]> "
-        else:
-            prompt = f"1-{len(choices)}> "
-
-        while True:
-            try:
-                choice_s = input(prompt).strip()
-            except BaseException:
-                self._write("\n", False, True)
-                raise
-
-            if choice_s:
-                try:
-                    choice = int(choice_s)
-                except Exception:
-                    continue
-            elif default_choice is None:
-                continue
-            else:
-                choice = default_choice
-
-            if choice <= 0 or choice > len(choices):
-                continue
-
-            choice -= 1
-            self.interactions.append(f"Choice result - {choice + 1}")
-            return choices[choice][0]
-
-    def yesno(self, prompt: str):
-        return self.yesno_choice(prompt)
-
-    def yesno_choice(self, prompt: str, default: bool | None = None):
-        orig_prompt = prompt
-
-        if default is True:
-            prompt += " yes/no [yes]> "
-        elif default is False:
-            prompt += " yes/no [no]> "
-        else:
-            prompt += " yes/no> "
-
-        while True:
-            try:
-                rv = input(prompt).strip().lower()
-            except BaseException:
-                self._write("\n", False, True)
-                raise
-
-            if rv in ("yes", "y"):
-                result = True
-            elif rv in ("no", "n"):
-                result = False
-            elif rv == "" and default is not None:
-                result = default
-            else:
-                continue
-            break
-
-        self.interactions.append(f"{orig_prompt} - {'yes' if result else 'no'}")
-        return result
-
-    # Other methods
-    def terms(self, prompt: str, url: str):
-        self.info(f"Opening {url} in a web browser.", True)
-
-        webbrowser.open_new(url)
-        time.sleep(.5)
-
-        if not self.yesno(prompt):
-            self.fail("You must accept the terms and conditions to proceed.")
-
-    def open_directory(self, prompt: str, directory: Path):
-        self.info(prompt, True)
-        if os.name == 'nt':
-            os.startfile(directory)
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", str(directory)])
-        else:
-            subprocess.Popen(["xdg-open", str(directory)])
-
-    def start_progress_bar(self, *entities_prompt: str) -> ProgressBar[str]:
-        progress_bar = super().start_progress_bar(*entities_prompt)
-        self._write(self._progress_bar_string(progress_bar), False, False, False)
-        return progress_bar
-
-    def _progress_bar_string(self, bar: ProgressBar[str]):
-        rv: list[str] = []
-        for caption, value, status in bar.iter_entities():
-            if value is None:
-                value = "?"
-
-            extra = ""
-            if status == "error":
-                extra = " - ERROR"
-            elif status == "done":
-                extra = " - DONE"
-            elif status == "halted":
-                extra = " - HALT"
-            rv.append(f"{caption}: {value}{extra}")
-
-        return "\n".join(rv)
-
-    def update_progress_bar(self, *entities_progress: str) -> None:
-        super().update_progress_bar(*entities_progress)
-        progress_bar = cast(ProgressBar[str], self.progress_bar)
-
-        rv = self._progress_bar_string(progress_bar)
-        self._write(f"\033[{progress_bar.length}F{rv}", False, False, False)
-
-    def end_progress_bar(self) -> None:
-        if self.progress_bar is None:
-            return
-
-        self._write(f"\033[{self.progress_bar.length + 1}F", False, False, False)
-        self._write(self._progress_bar_string(self.progress_bar), True, False, False)
-        super().end_progress_bar()

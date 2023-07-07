@@ -27,7 +27,7 @@ import renpy.script
 from typing import Any, cast
 
 from .archiver import KNOWN_ARCHIVERS, register_archiver_type as register_archiver_type
-from .packager import register_packager_type as register_packager_type, KNOWN_PACKAGERS
+from .packager import KNOWN_PACKAGERS, register_packager_type as register_packager_type
 from .types import KNOWN_PLATFORMS, ArchiveKind, FileListKind, FileListName, FilesPattern, PlatfromSetKind
 from .buildinfo import Package, Archive
 
@@ -281,8 +281,8 @@ package("android-bundle", "android-bundle", ["android", "all"], update=False,
         hidden=True, dlc=True, platform="android", ignore_archives=True)
 package("android-apk", "android-apk", ["android", "all"], update=False,
         hidden=True, dlc=True, platform="android", ignore_archives=True)
-package("ios", "ios", ["ios", "all"], update=False,
-        hidden=True, dlc=True, platform="ios", ignore_archives=True)
+# package("ios", "ios", ["ios", "all"], update=False,
+#         hidden=True, dlc=True, platform="ios", ignore_archives=True)
 package("web", "web", ["web", "renpy", "all"], update=False,
         hidden=True, dlc=True, platform="web", ignore_archives=True)
 

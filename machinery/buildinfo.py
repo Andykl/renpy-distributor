@@ -372,7 +372,7 @@ class BuildInfo:
             if package["name"] not in builtin_packages:
                 # TODO: Write down migration path.
                 raise Exception("It is not supported to have any except default packages in legacy mode."
-                                " Please migrate to build.toml.")
+                                " Please migrate to buildinfo.py")
 
             platforms = builtin_packages[package["name"]]
             ignore_archives = package["name"] in ("android", "ios", "web")

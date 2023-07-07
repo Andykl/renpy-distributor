@@ -22,20 +22,19 @@
 from __future__ import annotations
 
 import os
-import sys
 import time
 import enum
+import types
 import collections
 
 from pathlib import Path
 from typing import (
     Any, Callable, Union, Final, Generic,
-    Iterable, Literal, NoReturn, TypeVar, cast,
+    Iterable, Literal, NoReturn, TypeVar,
 )
 
 from .interface import Interface
-from .types import PlatfromSetKind, TaskKind
-from .types import KNOWN_PLATFORMS
+from .types import PlatfromSetKind, KNOWN_PLATFORMS
 
 DEBUG: Final[bool] = bool(int(os.getenv("RENPY_DISTRIBUTOR_DEBUG", "0")))
 
@@ -60,45 +59,44 @@ class Context:
     essential for any programm.
     """
 
-    _renpy_python: Path
+    # Path to the RenPy interpreter executable.
+    renpy_python: Path
 
+    # Path to the root directory of the project.
     project_dir: Path
+
+    # Path to the Ren'Py SDK directory.
     sdk_dir: Path
+
+    # Path to the directory where temporary files can be stored.
     tmp_dir: Path
+
+    # Log file path. If None, log to devnull.
     log_file: Path
 
+    # Set of platform names to invoke the command for.
+    platforms: set[str]
+
+    # Command that the distributor was invoked with.
     command: str
 
-    silent: bool
-    verbose: bool
+    # Interface-related options.
+    silent: bool = False
+    verbose: bool = True
 
-    def __init__(self, **kwargs: Any):
+    def __init__(self, log_file: str | None, **kwargs: Any):
+        if log_file is None:
+            log_file = os.devnull
+        self.log_file = Path(log_file)
+        self.platforms = set()
+
         self.__dict__.update(kwargs)
 
-    def __post_init__(self):
-        # Find the python executable to run.
-        if os.name == 'nt':
-            executable = "python.exe"
-            lib = "py3-windows-x86_64"
-        elif sys.platform == "darwin":
-            executable = "python"
-            lib = "py3-mac-universal"
-        else:
-            executable = "python"
-            lib = "py3-linux-x86_64"
-        executable_path = self.sdk_dir / "lib" / lib / executable
-
-        if not executable_path.exists():
-            raise Exception(f"RenPy interpreter does not exists: {executable_path}")
-
-        self._renpy_python = executable_path
-
-    def check_kind(self, kind: TaskKind):
-        if kind == "system":
+    def check_kind(self, kind: PlatfromSetKind):
+        build_platforms = self.platforms
+        if not build_platforms:
             return True
 
-        build_platforms: set[str] = self.build_platforms  # type: ignore
-        assert build_platforms, "All tasks before build_platfroms is set must be 'system' kind."
         return bool(kind.intersection(build_platforms))
 
     def sdk_path(self, *parts: str):
@@ -106,16 +104,14 @@ class Context:
         Returns a filename in the SDK directory.
         """
 
-        rv = self.sdk_dir.joinpath(*parts)
-        return rv
+        return self.sdk_dir.joinpath(*parts)
 
     def project_path(self, *parts: str):
         """
         Returns a filename in the project directory.
         """
 
-        rv = self.project_dir.joinpath(*parts)
-        return rv
+        return self.project_dir.joinpath(*parts)
 
     def temp_path(self, *parts: str):
         """
@@ -133,7 +129,7 @@ class Context:
 
         # Put together the basic command line.
         cmd: list[str] = []
-        cmd.append(str(self._renpy_python))
+        cmd.append(str(self.renpy_python))
         cmd.append(str(self.sdk_dir / "renpy.py"))
 
         cmd.append(str(self.project_dir))
@@ -144,52 +140,57 @@ class Context:
         return cmd
 
 
-_ContextT = TypeVar("_ContextT", bound=Context, covariant=True)
+_ContextT = TypeVar("_ContextT", bound=Context)
+_ContextT_co = TypeVar("_ContextT_co", bound=Context, covariant=True)
 
 
-class Runner(Generic[_ContextT]):
-    def __init__(self, context: _ContextT, interface: Interface):
+class Runner(Generic[_ContextT_co]):
+    def __init__(self, context: _ContextT_co, interface: Interface):
         self._context = context
         self._interface = interface
 
-        context.__post_init__()
+        self._registered_tasks: dict[str, Task] = {}
 
-        self.all_tasks: dict[str, tuple[Task, list[str], list[str]]] = {}
-
-    def register(
-            self, name: str, task: Task,
-            requires: list[str],
-            dependencies: list[str]
-    ):
-        if name in self.all_tasks:
+    def register_task(self, name: str, task: Task):
+        """
+        Register a task with the given name.
+        """
+        if name in self._registered_tasks:
             raise ValueError(f"{name!r} already registered as a task. Unregister it first to replace.")
 
-        self.all_tasks[name] = (task, requires, dependencies)
+        self._registered_tasks[name] = task
 
-    def unregister(self, name: str):
-        if name not in self.all_tasks:
+    def unregister_task(self, name: str):
+        """
+        Unregister a task with the given name.
+        """
+        if name not in self._registered_tasks:
             raise ValueError(f"{name!r} does not registered as a task.")
-        del self.all_tasks[name]
+        del self._registered_tasks[name]
 
-    def get_tasks_from(self, module_name: str):
-        for (mod, name), (task, requires, dependencies) in _all_tasks.items():
-            if mod == module_name:
-                self.register(name, task, requires, dependencies)
+    def register_tasks_from(self, module: types.ModuleType):
+        """
+        Register all tasks from the given module.
+        """
 
-    def compute(self) -> Iterable[Task]:
-        all_tasks = {k: v[0] for k, v in self.all_tasks.items()}
+        for name, value in vars(module).items():
+            if isinstance(value, Task):
+                self.register_task(name, value)
+
+    def _compute(self) -> Iterable[Task]:
+        all_tasks = self._registered_tasks.copy()
 
         # For each task, the list of tasks it needs.
-        forward: collections.defaultdict[str, list[str]] = collections.defaultdict(list)
+        forward = collections.defaultdict[str, list[str]](list)
 
         # For each task, the list of tasks that needs it.
-        reverse: collections.defaultdict[str, list[str]] = collections.defaultdict(list)
+        reverse = collections.defaultdict[str, list[str]](list)
 
         # Set of unknown tasks names.
         unknown_depends: set[str] = set()
 
-        for name, (task, requires, dependencies) in self.all_tasks.items():
-            for rname in requires:
+        for name, task in all_tasks.items():
+            for rname in task.requires:
                 try:
                     all_tasks[rname]
                 except KeyError:
@@ -200,7 +201,7 @@ class Runner(Generic[_ContextT]):
                     if name not in reverse[rname]:
                         reverse[rname].append(name)
 
-            for dname in dependencies:
+            for dname in task.dependencies:
                 try:
                     all_tasks[dname]
                 except KeyError:
@@ -216,15 +217,8 @@ class Runner(Generic[_ContextT]):
 
         # Actual dependencies of the tasks.
         tasks_dependencies: dict[str, tuple[str]] = {}
-        prev_task = None
         for name in all_tasks:
             depends = tuple(forward.get(name, ()))
-
-            # All tasks implicitly requires previous task
-            if not (depends or prev_task is None):
-                requires = (prev_task, )
-
-            prev_task = name
             tasks_dependencies[name] = depends
 
         # But still there could be a cicle of tasks dependencies.
@@ -242,8 +236,10 @@ class Runner(Generic[_ContextT]):
             del reverse[name]
 
         if use_cycle := sorted(reverse):
+            cycle_tasks = ', '.join(repr(n) for n in use_cycle)
             raise Exception(
-                f"The following tasks use each other in a loop: {', '.join(use_cycle)}. This is not allowed.")
+                f"The following tasks use each other in a loop: {cycle_tasks}."
+                "This is not allowed.")
 
         # Actually compute tasks order.
         task_indexes: dict[Task, int] = {}
@@ -271,13 +267,10 @@ class Runner(Generic[_ContextT]):
     def run(self) -> int:
         start = time.perf_counter_ns()
 
-        if self._context.log_file is None:  # type: ignore
-            self._context.log_file = Path(os.devnull)
-        else:
-            self._context.log_file.parent.mkdir(parents=True, exist_ok=True)
+        self._context.log_file.parent.mkdir(parents=True, exist_ok=True)
         log_f = self._context.log_file.open("w", encoding="utf-8")
 
-        tasks_queue = self.compute()
+        tasks_queue = self._compute()
 
         if DEBUG:
             tasks_queue = list(tasks_queue)
@@ -312,16 +305,25 @@ TaskFunction = Callable[..., Union[TaskResult, bool, NoReturn]]
 
 
 class Task:
+    """
+    A task is a wrapper around a function that can be run by the build system.
+
+    """
+
     def __init__(
-        self, name: str,
-        description: str | None,
-        kind: TaskKind,
+        self,
+        description: str,
+        kind: PlatfromSetKind,
         function: TaskFunction,
+        dependencies: Iterable[str] = (),
+        requires: Iterable[str] = (),
     ) -> None:
-        self.name = name
+        self.name = function.__name__
         self.description = description
-        self.kind: TaskKind = kind
+        self.kind = kind
         self.function = function
+        self.dependencies = tuple(dependencies)
+        self.requires = tuple(requires)
 
     def __repr__(self):
         return f"<Task: {self.name}>"
@@ -337,8 +339,7 @@ class Task:
         if DEBUG:
             interface.system_info(f"DEBUG: {self!r} has started.")
 
-        if self.description is not None:
-            interface.info(self.description)
+        interface.info(self.description)
 
         try:
             result = function(context, interface)
@@ -368,24 +369,23 @@ class Task:
         return result
 
 
-_all_tasks: dict[tuple[str, str], tuple[Task, list[str], list[str]]] = {}
-
-
-def task(
-    description: str | None = None, /, *,
-    kind: Literal["all", "system"] | str = "all",
+def create_task(
+    description: str,
+    function: TaskFunction, /, *,
+    kind: Literal["all"] | str = "all",
     requires: str | None = None,
     dependencies: str | None = None,
 ):
     """
-    This is a decorator that wraps a function (with signature (Context, Reporter) -> bool | TaskResult)
-    to define a task.
-
-    `description` is a short declaration of what that task do or None if it is conditional.
-    This also takes optional keyword arguments.
+    Create and return Task instance from task function.
+    `description`
+        A string description of the task purpose, that will be printed just before the task
+        execution (if it was not skipped).
+    `function`
+        A function with (Context, Interface) -> TaskResult signature, that will be executed
+        when the task is run.
     `kind`
-        A string giving a kind of that task. It can be "system" to always run.
-        Or it can be "all" to run if any platfrom was selected to build.
+        If it is "all" (default), then the task will be run on all platforms.
         Otherwise it should be space-separated list of platforms that the task should be run on.
         If that strings starts with a minus, then it only lists platfroms from where that should be
         excluded.
@@ -396,38 +396,8 @@ def task(
         If not None, should be a name or space-separated list of names of Tasks this Task will precede.
     """
 
-    def register_task(function: TaskFunction):
-        task = create_task(description, function, kind=kind)
-
-        if requires is None:
-            rrequires = []
-        else:
-            rrequires = requires.split()
-
-        if dependencies is None:
-            rdependencies = []
-        else:
-            rdependencies = dependencies.split()
-
-        _all_tasks[function.__module__, function.__name__] = (task, rrequires, rdependencies)
-        return function
-
-    return register_task
-
-
-def create_task(
-    description: str | None, function: TaskFunction, /, *,
-    kind: Literal["all", "system"] | str = "all"
-):
-    """
-    Create and return Task instance without registering it. Arguments meaning is the same
-    as in `task` function.
-    """
-
-    rkind: TaskKind
-    if kind == "system":
-        rkind = kind
-    elif kind == "all":
+    rkind: PlatfromSetKind
+    if kind == "all":
         rkind = KNOWN_PLATFORMS
     else:
         if kind.startswith("-"):
@@ -436,18 +406,73 @@ def create_task(
         else:
             negative = False
 
-        rkind = cast(PlatfromSetKind, set(kind.split()))
-        bad_kind = next((p for p in rkind if p not in KNOWN_PLATFORMS), None)
-        assert bad_kind is None, f"Unknown kind {bad_kind!r} in task {function.__name__!r}"
+        bad_kinds = set()
+        rkind = set()
+        for p in kind.split():
+            if p not in KNOWN_PLATFORMS:
+                bad_kinds.add(p)
+            else:
+                rkind.add(p)
+
+        if bad_kinds:
+            bad_kind = ", ".join(repr(k) for k in bad_kinds)
+            raise ValueError(f"Unknown kind(s) {bad_kind!r} in task {function.__name__!r}")
 
         if negative:
             rkind = {p for p in KNOWN_PLATFORMS if p not in rkind}
 
-    return Task(function.__name__, description, rkind, function)
+    if requires is None:
+        rrequires = ()
+    else:
+        rrequires = requires.split()
+
+    if dependencies is None:
+        rdependencies = ()
+    else:
+        rdependencies = dependencies.split()
+
+    return Task(
+        description,
+        rkind,
+        function,
+        rdependencies,
+        rrequires,
+    )
 
 
-def clear_tasks():
+def task(
+    description: str, /, *,
+    kind: Literal["all"] | str = "all",
+    requires: str | None = None,
+    dependencies: str | None = None,
+) -> Callable[[TaskFunction], Task]:
     """
-    Resets all defined tasks.
+    Decorator kind of create_task function.
+
+    `description`
+        A string description of the task purpose, that will be printed just before the task
+        execution (if it was not skipped).
+    `function`
+        A function with (Context, Interface) -> TaskResult signature, that will be executed
+        when the task is run.
+    `kind`
+        If it is "all" (default), then the task will be run on all platforms.
+        Otherwise it should be space-separated list of platforms that the task should be run on.
+        If that strings starts with a minus, then it only lists platfroms from where that should be
+        excluded.
+    `requires`
+        If not None, should be a name or space-separated list of names of Tasks this Task needs to be done
+        before it.
+    `dependencies`
+        If not None, should be a name or space-separated list of names of Tasks this Task will precede.
     """
-    _all_tasks.clear()
+
+    def deco(function: TaskFunction):
+        return create_task(
+            description,
+            function,
+            kind=kind,
+            requires=requires,
+            dependencies=dependencies,
+        )
+    return deco

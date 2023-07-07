@@ -26,7 +26,7 @@ import hashlib
 import functools
 
 from pathlib import Path
-from typing import Any, AbstractSet, MutableSet
+from typing import Any, AbstractSet, MutableSet, Callable
 
 from .types import FileListKind, FileListName, FilesPattern
 
@@ -35,7 +35,7 @@ def classify_directory(
     where: str, directory: Path,
     file_lists: dict[FileListName, FileList],
     patterns: dict[FilesPattern, FileListKind],
-):
+) -> None:
     """
     Walks through the `directory`, finds files and directories that
     match the pattern, and assigns them to the appropriate file list.
@@ -93,7 +93,7 @@ def classify_directory(
 
 
 @functools.cache
-def hash_file(fn: Path, method: str = "sha256", chunk_size: int = 8 * 1024 * 1024):
+def hash_file(fn: Path, method: str = "sha256", chunk_size: int = 8 * 1024 * 1024) -> str:
     """
     Returns the hash of content of `fn`.
     """
@@ -108,9 +108,9 @@ def hash_file(fn: Path, method: str = "sha256", chunk_size: int = 8 * 1024 * 102
 
 
 @functools.cache
-def match(s: str, pattern: FilesPattern):
+def match(s: str, pattern: FilesPattern) -> bool:
     """
-    Matches a glob-style pattern against s. Returns True if it matches,
+    Matches a glob-style pattern against `s`. Returns True if it matches,
     and False otherwise.
 
     ** matches every character.
@@ -131,15 +131,15 @@ def match(s: str, pattern: FilesPattern):
             regexstr += r'[^/]*/?'
             pattern = pattern[1:]
         elif pattern[0] == '[':
+            if "]" not in pattern:
+                raise ValueError(f"Unmatched '[' in pattern {pattern!r}")
+
             regexstr += r'['
             pattern = pattern[1:]
 
-            while pattern and pattern[0] != ']':
-                regexstr += pattern[0]
-                pattern = pattern[1:]
-
-            pattern = pattern[1:]
-            regexstr += ']'
+            letters, _, pattern = pattern.partition(']')
+            regexstr += letters
+            regexstr += r']'
 
         else:
             regexstr += re.escape(pattern[0])
@@ -413,10 +413,10 @@ class FileList(MutableSet[File]):
         Adds an empty directory to the file list.
 
         `name`
-            The name of the file to be added.
+            The name of the directory to be added.
 
         `path`
-            The path to that file on disk.
+            The path to that directory on disk.
         """
 
         self.add(File(name, path, True, False))
@@ -468,7 +468,7 @@ class FileList(MutableSet[File]):
         self._files = {f.name: f for f in sorted(rv)}
 
     @staticmethod
-    def merge(*lists: FileList):
+    def merge(*lists: FileList) -> FileList:
         """
         Merges a list of file lists into a single file list with no
         duplicate entries.
@@ -488,7 +488,7 @@ class FileList(MutableSet[File]):
 
         return FileList(*rv)
 
-    def split_by_prefix(self, prefix: str):
+    def split_by_prefix(self, prefix: str) -> tuple[FileList, FileList]:
         """
         Returns two filelists, one that contains all the files starting with prefix,
         and one tht contains all other files.
@@ -526,6 +526,25 @@ class FileList(MutableSet[File]):
 
         self._files = {f.name: f for f in rv}
 
+    def rename_files(self, rename_func: Callable[[str], str]):
+        """
+        Updates this file list with all the paths renamed using rename_func.
+        Depending on values of old and new this can lead to
+        file list with missing or empty directories.
+
+        `rename_func`
+            A function that takes a file name and returns a new file name.
+        """
+
+        files = {}
+        for f in self:
+            name = rename_func(f.name)
+            _check_file_name(name)
+            f._name = name  # type: ignore
+            files[name] = f
+
+        self._files = files
+
     def prepend_directory(self, directory: str):
         """
         Modifies this file list such that every file in it has `directory`
@@ -539,7 +558,7 @@ class FileList(MutableSet[File]):
 
         self._files = {f.name: f for f in rv}
 
-    def hash(self):
+    def hash(self) -> str:
         """
         Returns a hex digest representing this file list.
         """

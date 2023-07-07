@@ -21,6 +21,10 @@
 
 from __future__ import annotations
 
+# Export typing helpers.
+from .types import *
+
+# Export submodules.
 from . import (
     file_utils as file_utils,
     interface as interface,
@@ -29,10 +33,7 @@ from . import (
     buildinfo as buildinfo,
 )
 
-# Export all typing helpers.
-from .types import *
-
-# Export file utils.
+# Export file utils types and functions.
 from .file_utils import (
     File as File,
     FileList as FileList,
@@ -46,13 +47,13 @@ from .interface import Interface as Interface
 from .archiver import Archiver as Archiver
 from .packager import Packager as Packager
 
+
 # Export build info types.
 from .buildinfo import (
     BuildInfo as BuildInfo,
     Package as Package,
     Archive as Archive
 )
-
 
 # Export functions to register and init packager and archiver types.
 from .archiver import (
@@ -72,7 +73,6 @@ from .model import (
     Runner as Runner,
     task as task,
     create_task as create_task,
-    clear_tasks as clear_tasks,
 )
 
 # Register base formats
