@@ -39,12 +39,12 @@ from .types import FormatKind
 # 2. Extention of that format.
 # 3. Extra arguments used to init the Package.
 # 4. List of build modifiers.
-_registry: dict[FormatKind, tuple[type[Packager], str, list[Any], set[str]]] = {}
+_registry: dict[FormatKind, tuple[type[Packager], str, dict[str, Any], set[str]]] = {}
 KNOWN_PACKAGERS: set[FormatKind] = set()
 
 
 def register_packager_type(name: str, type: type[Packager], extension: str, /, *,
-                           extra_args: list[Any] | None = None,
+                           extra_kwargs: dict[str, Any] | None = None,
                            modifiers: set[str] | None = None):
     """
     Default modifiers are:
@@ -53,19 +53,19 @@ def register_packager_type(name: str, type: type[Packager], extension: str, /, *
         'prepend' - Makes this format prepends package name to added file list.
     """
 
-    _registry[name] = type, extension, (extra_args or []), (modifiers or set())
+    _registry[name] = type, extension, (extra_kwargs or {}), (modifiers or set())
     KNOWN_PACKAGERS.add(name)
 
 
-def get_packager_modifiers(name: FormatKind):
+def get_packager_modifiers(name: FormatKind) -> set[str]:
     return _registry[name][3]
 
 
-def init_packager(name: FormatKind, build_info: BuildInfo, outfile: Path, /, *extra_args: Any) -> Packager | None:
-    type, extension, default_extra_args, _ = _registry[name]
+def init_packager(name: FormatKind, build_info: BuildInfo, outfile: Path, /, **extra_kwargs: Any) -> Packager | None:
+    type, extension, default_extra_kwargs, _ = _registry[name]
 
     filename = outfile.parent / (outfile.name + extension)
-    return type.init_package(build_info, filename, *default_extra_args, *extra_args)
+    return type.init_package(build_info, filename, **default_extra_kwargs, **extra_kwargs)
 
 
 class Packager(abc.ABC):

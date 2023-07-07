@@ -60,8 +60,10 @@ class AndroidPackager(packager.Packager):
         yield from self.assets.write()
 
 
-machinery.register_packager_type("android-bundle", AndroidPackager, ".aab", extra_args=[True])
-machinery.register_packager_type("android-apk", AndroidPackager, ".apk", extra_args=[False])
+machinery.register_packager_type("android-bundle", AndroidPackager, ".aab",
+                                 extra_kwargs={"bundle": True})
+machinery.register_packager_type("android-apk", AndroidPackager, ".apk",
+                                 extra_kwargs={"bundle": False})
 
 
 class AndroidPrivatePackager(packager.Packager):

@@ -30,19 +30,19 @@ from .file_utils import FileList
 from .types import ArchiveKind
 
 
-_registry: dict[ArchiveKind, tuple[type[Archiver], str, list[Any]]] = {}
+_registry: dict[ArchiveKind, tuple[type[Archiver], str, dict[str, Any]]] = {}
 KNOWN_ARCHIVERS: set[ArchiveKind] = set()
 
 
-def register_archiver_type(name: str, type: type[Archiver], extension: str, *extra_args: Any):
-    _registry[name] = type, extension, list(extra_args)
+def register_archiver_type(name: str, type: type[Archiver], extension: str, **extra_kwargs: Any):
+    _registry[name] = type, extension, extra_kwargs
     KNOWN_ARCHIVERS.add(name)
 
 
-def init_archiver(name: ArchiveKind, filename: Path, *extra_args: Any) -> Archiver:
-    type, extension, default_extra_args = _registry[name]
+def init_archiver(name: ArchiveKind, filename: Path, **extra_kwargs: Any) -> Archiver:
+    type, extension, default_extra_kwargs = _registry[name]
     filename = filename.parent / (filename.name + extension)
-    return type(filename, *default_extra_args, *extra_args)
+    return type(filename, **default_extra_kwargs, **extra_kwargs)
 
 
 class Archiver(abc.ABC):

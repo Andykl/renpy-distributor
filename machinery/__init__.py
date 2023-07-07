@@ -75,34 +75,22 @@ from .model import (
     clear_tasks as clear_tasks,
 )
 
-if True:
-    from . import packager
+# Register base formats
+register_packager_type("zip", packager.ZipPackager, ".zip",
+                       modifiers={"prepend"})
+register_packager_type("app-zip", packager.ZipPackager, ".zip",
+                       modifiers={"app"})
+register_packager_type("bare-zip", packager.ZipPackager, ".zip")
+register_packager_type("directory", packager.DirectoryPackager, "")
+register_packager_type("app-directory", packager.DirectoryPackager, "-app",
+                       modifiers={"app"})
+register_packager_type("tar.bz2", packager.TarPackager, ".tar.bz2",
+                       extra_kwargs={"mode": "w:bz2"}, modifiers={"prepend"})
+register_packager_type("dmg", packager.DMGPackager, "-dmg",
+                       modifiers={"dmg", "prepend"})
+register_packager_type("app-dmg", packager.DMGPackager, "-app-dmg",
+                       modifiers={"app", "dmg"})
+register_packager_type("bare-tar.bz2", packager.TarPackager, ".tar.bz2",
+                       extra_kwargs={"mode": "w:bz2"})
 
-    # Register base formats
-    register_packager_type("zip", packager.ZipPackager, ".zip", modifiers={"prepend"})
-    register_packager_type("app-zip", packager.ZipPackager, ".zip", modifiers={"app"})
-    register_packager_type("bare-zip", packager.ZipPackager, ".zip")
-    register_packager_type("directory", packager.DirectoryPackager, "")
-    register_packager_type("app-directory", packager.DirectoryPackager, "-app", modifiers={"app"})
-    register_packager_type("tar.bz2", packager.TarPackager, ".tar.bz2", extra_args=["w:bz2"], modifiers={"prepend"})
-    register_packager_type("dmg", packager.DMGPackager, "-dmg", modifiers={"dmg", "prepend"})
-    register_packager_type("app-dmg", packager.DMGPackager, "-app-dmg", modifiers={"app", "dmg"})
-    register_packager_type("bare-tar.bz2", packager.TarPackager, ".tar.bz2", extra_args=["w:bz2"])
-
-    # Special packagers used in other systems.
-    register_packager_type("android-bundle", packager.RaisePackager, "", extra_args=[
-                           "Could not build android package because RAPT is not installed."])
-    register_packager_type("android-apk", packager.RaisePackager, "", extra_args=[
-                           "Could not build android package because RAPT is not installed."])
-    register_packager_type("web", packager.RaisePackager, "", extra_args=[
-                           "Could not build web package because web support is not installed."])
-    register_packager_type("ios", packager.RaisePackager, "", extra_args=["RENIOS"])
-
-    del packager
-
-if True:
-    from . import archiver
-
-    register_archiver_type("rpa", archiver.RenPyRPA3Archiver, ".rpa")
-
-    del archiver
+register_archiver_type("rpa", archiver.RenPyRPA3Archiver, ".rpa")
