@@ -140,7 +140,6 @@ class Context:
         return cmd
 
 
-_ContextT = TypeVar("_ContextT", bound=Context)
 _ContextT_co = TypeVar("_ContextT_co", bound=Context, covariant=True)
 
 
@@ -186,15 +185,12 @@ class Runner(Generic[_ContextT_co]):
         # For each task, the list of tasks that needs it.
         reverse = collections.defaultdict[str, list[str]](list)
 
-        # Set of unknown tasks names.
-        unknown_depends: set[str] = set()
-
         for name, task in all_tasks.items():
             for rname in task.requires:
                 try:
                     all_tasks[rname]
                 except KeyError:
-                    unknown_depends.add(rname)
+                    raise ValueError(f"Task {name!r} requires unknown task {rname!r}.")
                 else:
                     if rname not in forward[name]:
                         forward[name].append(rname)
@@ -205,15 +201,12 @@ class Runner(Generic[_ContextT_co]):
                 try:
                     all_tasks[dname]
                 except KeyError:
-                    unknown_depends.add(dname)
+                    raise ValueError(f"Task {name!r} depends on unknown task {dname!r}.")
                 else:
                     if name not in forward[dname]:
                         forward[dname].append(name)
                     if dname not in reverse[name]:
                         reverse[name].append(dname)
-
-        if unknown_depends:
-            raise Exception(f"Task dependencies refers to unknown tasks: {', '.join(unknown_depends)}")
 
         # Actual dependencies of the tasks.
         tasks_dependencies: dict[str, tuple[str]] = {}
@@ -307,14 +300,13 @@ TaskFunction = Callable[..., Union[TaskResult, bool, NoReturn]]
 class Task:
     """
     A task is a wrapper around a function that can be run by the build system.
-
     """
 
     def __init__(
         self,
         description: str,
-        kind: PlatfromSetKind,
         function: TaskFunction,
+        kind: PlatfromSetKind,
         dependencies: Iterable[str] = (),
         requires: Iterable[str] = (),
     ) -> None:
@@ -433,8 +425,8 @@ def create_task(
 
     return Task(
         description,
-        rkind,
         function,
+        rkind,
         rdependencies,
         rrequires,
     )
