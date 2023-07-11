@@ -50,7 +50,7 @@ class BuildContext(machinery.Context):
 
     def __init__(self, build_packages: t.Iterable[str] = (), **kwargs: t.Any):
         super().__init__(**kwargs)
-        self.build_packages = set(build_packages)
+        self.build_packages = tuple(build_packages)
 
     # Path to the output directory.
     output_dir: pathlib.Path = None  # type: ignore
@@ -65,7 +65,7 @@ class BuildContext(machinery.Context):
     build_update: bool = True
 
     # Set of names of packages to build.
-    build_packages: set[str]
+    build_packages: tuple[str]
 
     build_info: machinery.BuildInfo
     classifier_file_lists: dict[machinery.FileListName, machinery.FileList]

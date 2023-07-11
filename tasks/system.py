@@ -192,43 +192,46 @@ def update_dump(context: Context, interface: Interface):
 @task("Checking chosen packages...")
 def check_package(context: Context, interface: Interface):
     all_packages = list(context.build_info.packages)
+    chosen = list(context.build_packages)
 
-    def check_packages(chosen: set[str]):
-        if extra := chosen.difference(all_packages):
+    packages_str = ", ".join(all_packages)
+
+    def check_packages(chosen: list[str]):
+        if extra := set(chosen).difference(all_packages):
             interface.info(
                 "Selected packages does not exist: "
-                f"{', '.join(extra)}. Choose from: {', '.join(all_packages)}.")
+                f"{', '.join(extra)}. Choose from: {packages_str}.")
             return False
         return True
 
-    chosen: set[str] = context.build_packages
-    if chosen and not check_packages(context.build_packages):
-        chosen = set()
+    if chosen and check_packages(chosen):
+        return True
 
-    if not chosen:
-        while True:
-            result = interface.input(
-                f"Input space-separated packges from {', '.join(all_packages)}:", empty="")
+    while True:
+        result = interface.input(
+            f"Input space-separated packges from {packages_str}:", empty="")
 
-            chosen = set(result.split())
-            if check_packages(chosen):
-                break
+        seen = set()
+        chosen = [x for x in result.split() if
+                  not (x in seen or seen.add(x))]
 
-    context.build_packages = chosen
-    if not context.build_packages:
-        interface.fail("No packages are selected, so there's nothing to do.")
+        if not chosen:
+            interface.final_success("No packages are selected, so there's nothing to do.")
+
+        if check_packages(chosen):
+            break
+
+    context.build_packages = tuple(chosen)
     return True
 
 
 @task("Initialising build platforms...")
 def init_build_platforms(context: Context, interface: Interface):
-    from ..machinery import PlatfromSetKind
-
-    kinds: PlatfromSetKind = set()
+    kinds = set()
     for name in context.build_packages:
         package = context.build_info.packages[name]
         kinds.update(package.platforms)
-    context.build_platforms = kinds  # type: ignore
+    context.platforms = kinds
     return True
 
 
