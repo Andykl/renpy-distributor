@@ -36,55 +36,48 @@ parser = argparse.ArgumentParser(
     "-m distributor",
     description="Distributor of RenPy games.",
     epilog="Use COMMAND -h to get help for needed command.")
+
+# Paths that are required for all commands.
+parser.add_argument(
+    "--project-dir", type=pathlib.Path, required=True,
+    help="Path to the root of project to build.")
+parser.add_argument(
+    "--sdk-dir", type=pathlib.Path, required=True,
+    help="Path to the root of RenPy SDK.")
+parser.add_argument(
+    "--tmp-dir", type=pathlib.Path,
+    help="Path to the tmp directory."
+    "If ommitted, defaults to SDK-DIR/tmp.")
+parser.add_argument(
+    "--log-file", type=pathlib.Path,
+    help="The name of the log file to write build progress. "
+    " If ommitted, only prints to the console.")
+
+# Switches that are expected to be used by all commands.
+parser.add_argument(
+    "--legacy-build", action="store_true",
+    help="Compiles the game to retrieve dump with build info."
+    " If ommitted, buildinfo.toml file in PROJECT-DIR is expected to exist.")
+parser.add_argument(
+    "--silent", action="store_true",
+    help="Prints only error or success messages to the console"
+    " (but the log output remains unchanged).")
+parser.add_argument(
+    "--verbose", action="store_true",
+    help="Prints a more verbous output in the console and log.")
+
 _subparsers = parser.add_subparsers(
     required=True, dest="command", metavar="COMMAND", title="subcommands")
 
 
-def _add_paths(parser: argparse.ArgumentParser):
-    # Paths that needed regardless of command.
-    parser.add_argument(
-        "--project-dir", type=pathlib.Path, required=True,
-        help="Path to the root of project to build.")
-    parser.add_argument(
-        "--sdk-dir", type=pathlib.Path, required=True,
-        help="Path to the root of RenPy SDK.")
-    parser.add_argument(
-        "--tmp-dir", type=pathlib.Path,
-        help="Path to the tmp directory."
-        "If ommitted, defaults to SDK-DIR/tmp.")
-    parser.add_argument(
-        "--log-file", type=pathlib.Path,
-        help="The name of the log file to write build progress. "
-        " If ommitted, only prints to the console.")
-
-
-# Get build info parser.
-build_info_parser = _subparsers.add_parser(
-    "buildinfo", help="Update and return build info.")
-_add_paths(build_info_parser)
-build_info_parser.add_argument(
-    "--legacy-build", action="store_true",
-    help="Compiles the game to retrieve dump with build info."
-    " If ommitted, buildinfo.toml file in PROJECT-DIR is expected to exist.")
-
 # Build parser.
 build_parser = _subparsers.add_parser("build", help="Build the game.")
 build_parser.add_argument("build_packages", nargs="*")
-_add_paths(build_parser)
 build_parser.add_argument(
     "--output-dir", type=pathlib.Path,
     help="Path to the directory in where result packages will be placed. "
     "If omitted, it is computed based on data from build info."
 )
-
-# Switches
-build_parser.add_argument(
-    "--silent", action="store_true",
-    help="Prints only error or success messages to the console"
-    " (but the log output remains unchanged).")
-build_parser.add_argument(
-    "--verbose", action="store_true",
-    help="Prints a more verbous output in the console and log.")
 build_parser.add_argument(
     "--fresh", action="store_true",
     help="Prevents build to use the cached data from previous build.")
@@ -92,59 +85,26 @@ build_parser.add_argument(
     "--force-recompile", action="store_true",
     help="Forces all .rpy scripts to be recompiled during build.")
 build_parser.add_argument(
-    "--legacy-build", action="store_true",
-    help="Compiles the game to retrieve dump with build info."
-    " If ommitted, buildinfo.toml file in PROJECT-DIR is expected to exist.")
-build_parser.add_argument(
     "--no-update", action="store_false", dest="build_update",
     help="Prevents updates from being built.")
 
 
-def build_game(context: BuildContext, interface: machinery.Interface):
+if __name__ == "__main__":
     from .tasks import system, classify, prepare_build, build
     from .web import tasks as web_tasks
     from .rapt import tasks as rapt_tasks
 
+    args = parser.parse_args()
+    context = BuildContext(**args.__dict__)
+    interface = CLIInterface(context.verbose, context.silent)
     runner = machinery.Runner(context, interface)
+
+    # Register all system tasks.
     runner.register_tasks_from(system)
     runner.register_tasks_from(classify)
     runner.register_tasks_from(prepare_build)
     runner.register_tasks_from(build)
     runner.register_tasks_from(web_tasks)
     runner.register_tasks_from(rapt_tasks)
-    return runner.run()
 
-
-def get_build_info(context: BuildContext, interface: machinery.Interface):
-    from .tasks import system
-    from .web import tasks as web_tasks
-    from .rapt import tasks as rapt_tasks
-
-    runner = machinery.Runner(context, interface)
-    runner.register_tasks_from(system)
-
-    def _(context: BuildContext, interface: machinery.Interface):
-        interface.final_success("Done.")
-
-    task = machinery.create_task(
-        "Quitting...", _,
-        requires="update_dump", dependencies="check_package")
-    runner.register_task("exit", task)
-
-    if runner.run():
-        raise Exception("Could not get build info.")
-
-    return context.build_info
-
-
-if __name__ == "__main__":
-    args = parser.parse_args()
-    if args.command == "build":
-        context = BuildContext(**args.__dict__)
-        sys.exit(build_game(context, CLIInterface(context.verbose, context.silent)))
-
-    elif args.command == "buildinfo":
-        context = BuildContext(**args.__dict__, silent=True, verbose=False)
-        interface = CLIInterface(context.verbose, context.silent)
-        print(get_build_info(context, interface))
-        sys.exit(0)
+    sys.exit(runner.run())

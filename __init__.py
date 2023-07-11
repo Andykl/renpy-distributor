@@ -48,7 +48,7 @@ class BuildContext(machinery.Context):
     Namespace created once per build representing properties of build process.
     """
 
-    def __init__(self, build_packages: t.Iterable[str] = (), **kwargs):
+    def __init__(self, build_packages: t.Iterable[str] = (), **kwargs: t.Any):
         super().__init__(**kwargs)
         self.build_packages = set(build_packages)
 

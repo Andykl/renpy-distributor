@@ -294,6 +294,8 @@ class BuildInfo:
             return rv.translate(idt)
 
         slash_n = "\n" + "    " * 4
+        packages = [format_obj(p, 0) for p in self.packages.values()]
+        archives = [format_obj(a, 0) for a in self.archives.values()]
         return dedent(f"""\
             BuildInfo:
                 # The name of directories in the archives.
@@ -321,11 +323,10 @@ class BuildInfo:
                 mac_info_plist: {format_obj(self.mac_info_plist, 20)}
 
                 # The identity used for codesigning and dmg building.
-                # TODO: Ask Tom how it should actually work.
                 mac_identity: {self.mac_identity}
 
-                {slash_n.join([format_obj(p, 0) for p in self.packages.values()])}
-                {slash_n.join([format_obj(p, 0) for p in self.archives.values()])}
+                {slash_n.join(packages)}
+                {slash_n.join(archives)}
                 # Set of file patterns of documentation files.
                 # In a mac app build,
                 # files matching the documentation pattern are stored twice - once
