@@ -32,12 +32,7 @@ import webbrowser
 import subprocess
 import typing as t
 
-if __name__ == "__main__" and not __package__:
-    if str(pathlib.Path(__file__).parents[2]) not in sys.path:
-        sys.path.append(str(pathlib.Path(__file__).parents[2]))
-    __package__ = "build.distributor"
-
-from . import machinery
+from renpy_distributor import machinery
 
 # Missing parts are dmg and codesign, RenIOS, distributor of renpy launcher,
 # updates creation, documentation, GUI interface.

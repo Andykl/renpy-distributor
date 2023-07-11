@@ -30,7 +30,7 @@ if __name__ == "__main__" and not __package__:
         sys.path.append(str(pathlib.Path(__file__).parents[2]))
     __package__ = "build.distributor"
 
-from . import machinery, BuildContext, CLIInterface
+from renpy_distributor import machinery, BuildContext, CLIInterface
 
 parser = argparse.ArgumentParser(
     "-m distributor",
